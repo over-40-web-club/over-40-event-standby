@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface UseBackgroundMusicOptions {
   url: string;
@@ -20,30 +20,49 @@ export const useBackgroundMusic = ({
   volume: initialVolume = 0.5,
   loop = true,
 }: UseBackgroundMusicOptions): UseBackgroundMusicReturn => {
-  const [audio] = useState(new Audio(url));
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState(initialVolume);
+  const fadeIntervalRef = useRef<number>();
+  const initializedRef = useRef(false);
 
+  // Audio インスタンスの作成のみを行う
   useEffect(() => {
-    audio.loop = loop;
-    audio.volume = volume;
+    audioRef.current = new Audio(url);
+    initializedRef.current = true;
 
     return () => {
-      audio.pause();
-      audio.currentTime = 0;
+      if (fadeIntervalRef.current) {
+        clearInterval(fadeIntervalRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
     };
-  }, [audio, loop, volume]);
+  }, [url]);
 
+  // 初期設定と更新の両方を処理
   useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.loop = loop;
+      audioRef.current.volume = volume;
+    }
+  }, [loop, volume]);
+
+  // 再生状態の制御
+  useEffect(() => {
+    if (!audioRef.current) return;
+
     if (isPlaying) {
-      audio.play().catch((error) => {
+      audioRef.current.play().catch((error) => {
         console.log('Audio playback failed:', error);
         setIsPlaying(false);
       });
     } else {
-      audio.pause();
+      audioRef.current.pause();
     }
-  }, [isPlaying, audio]);
+  }, [isPlaying]);
 
   const togglePlay = () => {
     setIsPlaying(!isPlaying);
@@ -52,34 +71,53 @@ export const useBackgroundMusic = ({
   const setVolume = (newVolume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, newVolume));
     setVolumeState(clampedVolume);
-    audio.volume = clampedVolume;
   };
 
   const fadeIn = () => {
+    if (!audioRef.current) return;
+
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+    }
+
     let currentVolume = 0;
-    audio.volume = 0;
+    audioRef.current.volume = 0;
     setIsPlaying(true);
 
-    const fadeInterval = setInterval(() => {
+    fadeIntervalRef.current = window.setInterval(() => {
       if (currentVolume < volume) {
         currentVolume = Math.min(volume, currentVolume + 0.1);
-        audio.volume = currentVolume;
+        if (audioRef.current) {
+          audioRef.current.volume = currentVolume;
+        }
       } else {
-        clearInterval(fadeInterval);
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+        }
       }
     }, 200);
   };
 
   const fadeOut = () => {
-    let currentVolume = audio.volume;
+    if (!audioRef.current) return;
 
-    const fadeInterval = setInterval(() => {
+    if (fadeIntervalRef.current) {
+      clearInterval(fadeIntervalRef.current);
+    }
+
+    let currentVolume = audioRef.current.volume;
+
+    fadeIntervalRef.current = window.setInterval(() => {
       if (currentVolume > 0) {
         currentVolume = Math.max(0, currentVolume - 0.1);
-        audio.volume = currentVolume;
+        if (audioRef.current) {
+          audioRef.current.volume = currentVolume;
+        }
       } else {
         setIsPlaying(false);
-        clearInterval(fadeInterval);
+        if (fadeIntervalRef.current) {
+          clearInterval(fadeIntervalRef.current);
+        }
       }
     }, 200);
   };
